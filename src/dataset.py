@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import chardet
 import csv
 import json
 import os
@@ -25,14 +26,30 @@ def csv2json(url, has_header=False):
         print(f'failed to fetch {url}. Status code={res.status_code}', file=sys.stderr)
         return None
 
-    if res.encoding != 'ISO-8859-1': enc = res.encoding
-    else: enc = res.apparent_encoding
-    if enc is None: enc = 'Shift_JIS'
+    text = None
+    if res.encoding != 'ISO-8859-1':
+        enc = res.encoding
+    else:
+        enc = res.apparent_encoding
+    if enc is None or enc.lower() == 'shift_jis':
+        enc = 'cp932'
     try:
         text = res.content.decode(enc)
     except Exception as e:
-        print(f'failed to decode {url}. Encoding={enc}, Reason={e}', file=sys.stderr)
-        return None
+        reason = e
+
+    if text is None:
+        enc2 = 'cp932'
+        try:
+            text = res.content.decode(enc2)
+        except Exception as e:
+            reason2 = e
+            print(f'failed to decode {url}. Reason={e}', file=sys.stderr)
+            print(f'challenged encoding: {enc}. Reason={reason}', file=sys.stderr)
+            print(f'challenged encoding: {enc2}. Reason={reason2}', file=sys.stderr)
+            print(f'requests.encoding: {res.encoding}', file=sys.stderr)
+            print(f'requests.apparent_encoding: {res.apparent_encoding}', file=sys.stderr)
+            return None
 
     rows = csv.reader(text.splitlines())
     meta = {}
