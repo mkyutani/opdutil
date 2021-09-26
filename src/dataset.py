@@ -44,10 +44,10 @@ def csv2json(url, has_header=False):
         except Exception as e:
             reason2 = e
             print(f'failed to decode {url}. Reason={e}', file=sys.stderr)
-            print(f'challenged encoding: {enc}. Reason={reason}', file=sys.stderr)
-            print(f'challenged encoding: {enc2}. Reason={reason2}', file=sys.stderr)
-            print(f'requests.encoding: {res.encoding}', file=sys.stderr)
-            print(f'requests.apparent_encoding: {res.apparent_encoding}', file=sys.stderr)
+            print(f'- challenged encoding: {enc}. Reason={reason}', file=sys.stderr)
+            print(f'- challenged encoding: {enc2}. Reason={reason2}', file=sys.stderr)
+            print(f'- requests.encoding: {res.encoding}', file=sys.stderr)
+            print(f'- requests.apparent_encoding: {res.apparent_encoding}', file=sys.stderr)
             return None
 
     rows = csv.reader(text.splitlines())
@@ -149,7 +149,7 @@ if __name__ == '__main__':
 
     def usage():
         print('parameters: method url ...', file=sys.stderr)
-        print('method: create_dataset, csv2json, list_csvs', file=sys.stderr)
+        print('- method: create_dataset, csv2json, list_csvs', file=sys.stderr)
 
     if len(sys.argv) < 3:
         usage()
