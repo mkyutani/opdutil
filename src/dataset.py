@@ -9,7 +9,7 @@ import sys
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 
-def csv2json(url, has_header=False):
+def csv2json(url, has_header=False, trial_encoding=None):
 
     res = None
     try:
@@ -25,6 +25,7 @@ def csv2json(url, has_header=False):
         print(f'failed to fetch {url}. Status code={res.status_code}', file=sys.stderr)
         return None
 
+    reason = None
     text = None
     if res.encoding != 'ISO-8859-1':
         enc = res.encoding
@@ -38,17 +39,25 @@ def csv2json(url, has_header=False):
         reason = e
 
     if text is None:
-        enc2 = 'cp932'
-        try:
-            text = res.content.decode(enc2)
-        except Exception as e:
-            reason2 = e
-            print(f'failed to decode {url}. Reason={e}', file=sys.stderr)
-            print(f'- challenged encoding: {enc}. Reason={reason}', file=sys.stderr)
-            print(f'- challenged encoding: {enc2}. Reason={reason2}', file=sys.stderr)
-            print(f'- requests.encoding: {res.encoding}', file=sys.stderr)
-            print(f'- requests.apparent_encoding: {res.apparent_encoding}', file=sys.stderr)
+        if trial_encoding is None:
+            print(f'failed to decode {url}.', file=sys.stderr)
+            print(f'  tried encoding: {enc}. Reason={reason}', file=sys.stderr)
+            print(f'  requests.encoding: {res.encoding}', file=sys.stderr)
+            print(f'  requests.apparent_encoding: {res.apparent_encoding}', file=sys.stderr)
             return None
+        else:
+            reason2 = None
+            enc2 = trial_encoding
+            try:
+                text = res.content.decode(enc2)
+            except Exception as e:
+                reason2 = e
+                print(f'failed to decode {url}.', file=sys.stderr)
+                print(f'  tried encoding: {enc}. Reason={reason}', file=sys.stderr)
+                print(f'  tried encoding: {enc2}. Reason={reason2}', file=sys.stderr)
+                print(f'  requests.encoding: {res.encoding}', file=sys.stderr)
+                print(f'  requests.apparent_encoding: {res.apparent_encoding}', file=sys.stderr)
+                return None
 
     rows = csv.reader(text.splitlines())
     meta = {}
@@ -124,7 +133,7 @@ def list_csvs(url):
 
     return selected
 
-def create_dataset(url, dir=None):
+def create_dataset(url, dir=None, has_header=False, trial_encoding=None):
 
     if dir == None:
         dir = ''
@@ -135,7 +144,7 @@ def create_dataset(url, dir=None):
 
     csvs = list_csvs(url)
     for c in csvs:
-        json = csv2json(c, True)
+        json = csv2json(c, has_header=has_header, trial_encoding=trial_encoding)
         if json is not None:
             fn = re.sub('/', '--', urlparse(c).path)
             fn = re.sub('^--', '', fn)
@@ -149,7 +158,7 @@ if __name__ == '__main__':
 
     def usage():
         print('parameters: method url ...', file=sys.stderr)
-        print('- method: create_dataset, csv2json, list_csvs', file=sys.stderr)
+        print('  method: create_dataset, csv2json, list_csvs', file=sys.stderr)
 
     if len(sys.argv) < 3:
         usage()
@@ -162,12 +171,15 @@ if __name__ == '__main__':
             dir = sys.argv[3]
         else:
             dir = None
-        create_dataset(url, dir)
+        has_header = False
+        if len(sys.argv) > 4 and sys.argv[4].lower() == 'true':
+            has_header = True
+        create_dataset(url, dir=dir, has_header=has_header, trial_encoding='cp932')
     elif method == 'csv2json':
         has_header = False
         if len(sys.argv) > 3 and sys.argv[3].lower() == 'true':
             has_header = True
-        json = csv2json(url, has_header)
+        json = csv2json(url, has_header=has_header, trial_encoding='cp932')
         print(json)
     elif method == 'list_csvs':
         csvs = list_csvs(url)
