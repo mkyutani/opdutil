@@ -267,6 +267,6 @@ if __name__ == '__main__':
         csv_path = None if args.path[0] == '-' else args.path[0]
         encoding = args.encoding[0] if args.encoding is not None else None
         line_number = args.line_number
-        ret = header(csv_path, line_number, encoding=encoding)
+        ret = header(csv_path, line_number[0], encoding=encoding)
 
     exit(ret)
