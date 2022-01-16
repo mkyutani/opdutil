@@ -12,6 +12,12 @@ import sys
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 
+def columnexp2number(c):
+    return int(ord(c.upper()) - 0x41)
+
+def columnnumber2exp(n):
+    return chr(n + 0x41)
+
 def create_dataset(csv_path, prefix=None, encoding=None):
 
     if csv_path is None:
@@ -34,7 +40,7 @@ def create_dataset(csv_path, prefix=None, encoding=None):
         record = []
         for column in row:
             record.append(column)
-        data.update({f'{prefix}-{lno}': record})
+        data.update({f'{prefix}--{lno}': record})
         lno = lno + 1
 
     return {
@@ -46,7 +52,7 @@ def remove_invalid_records(ds):
 
     removing_keys = []
     for id, record in ds['data'].items():
-        lno = id.split('-')[1]
+        lno = id.split('--')[1]
         if len(record) == 0:
             print(f'CSV #{lno}: No columns', file=sys.stderr)
             removing_keys.append(id)
@@ -65,16 +71,10 @@ def remove_invalid_records(ds):
             removing_keys.append(id)
             continue
 
-    for lno in removing_keys:
-        ds.data.pop(id)
+    for id in removing_keys:
+        ds['data'].pop(id)
 
     return ds
-
-def columnexp2number(c):
-    return int(ord(c.upper()) - 0x41)
-
-def columnnumber2exp(n):
-    return chr(n + 0x41)
 
 def select_columns(ds_old, column_list, strict=False):
 
@@ -88,7 +88,7 @@ def select_columns(ds_old, column_list, strict=False):
     ds['data'] = {}
     for id, record_old in ds_old['data'].items():
         len_old = len(record_old)
-        lno = id.split('-')[1]
+        lno = id.split('--')[1]
         record = []
         for c in columns:
             if c > len_old:
@@ -116,6 +116,22 @@ def select(csv, prefix=None, column_list=None, encoding=None, output_format=None
     else:
         dump = json.dumps(ds, ensure_ascii=False, indent=1)
         print(dump)
+
+    return 0
+
+def header(csv, line_number, encoding=None):
+
+    ds = create_dataset(csv, prefix=None, encoding=encoding)
+    dataset_id = ds['meta']['id']
+    record = ds['data'].get(f'{dataset_id}--{line_number}')
+    if record is None:
+        print(f'CSV #{line_number}: No such a record', file=sys.stderr)
+        return errno.ENOENT
+
+    column = 0
+    for c in record:
+        print(f'{csv} {columnnumber2exp(column)} {c}')
+        column = column + 1
 
     return 0
 
@@ -219,6 +235,10 @@ if __name__ == '__main__':
     sp_select.add_argument('--columns', nargs=1, metavar='COLUMNS', help='select columns (A,B,...)')
     sp_select.add_argument('--strict', action='store_true', help='Not allow no content columns')
     sp_select.add_argument('--csv', action='store_true', help='csv output')
+    sp_header = sps.add_parser('header', help='Print header')
+    sp_header.add_argument('path', nargs=1, metavar='CSVPATH', help='open data csv path')
+    sp_header.add_argument('--encoding', nargs=1, metavar='ENCODING', help='code page')
+    sp_header.add_argument('-n', '--line-number', nargs=1, default='1', help='delimiter')
 
     if len(sys.argv) == 1:
         print(parser.format_usage(), file=sys.stderr)
@@ -243,5 +263,10 @@ if __name__ == '__main__':
         strict = args.strict
         delimiter=args.delimiter[0]
         ret = select(csv_path, column_list=column_list, prefix=prefix, encoding=encoding, output_format=output_format, strict=strict, delimiter=delimiter)
+    elif method == 'header':
+        csv_path = None if args.path[0] == '-' else args.path[0]
+        encoding = args.encoding[0] if args.encoding is not None else None
+        line_number = args.line_number
+        ret = header(csv_path, line_number, encoding=encoding)
 
     exit(ret)
