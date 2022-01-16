@@ -28,6 +28,7 @@ def create_dataset(csv_path, prefix=None, encoding=None):
 
     if prefix is None:
         prefix = hashlib.md5(csv_path.encode()).hexdigest()
+    prefix = re.sub('-', '_', prefix)
 
     meta = {
         'id': prefix
@@ -40,7 +41,7 @@ def create_dataset(csv_path, prefix=None, encoding=None):
         record = []
         for column in row:
             record.append(column)
-        data.update({f'{prefix}--{lno}': record})
+        data.update({f'{prefix}-{lno}': record})
         lno = lno + 1
 
     return {
@@ -52,7 +53,7 @@ def remove_invalid_records(ds):
 
     removing_keys = []
     for id, record in ds['data'].items():
-        lno = id.split('--')[1]
+        lno = id.split('-')[1]
         if len(record) == 0:
             print(f'CSV #{lno}: No columns', file=sys.stderr)
             removing_keys.append(id)
@@ -88,7 +89,7 @@ def select_columns(ds_old, column_list, strict=False):
     ds['data'] = {}
     for id, record_old in ds_old['data'].items():
         len_old = len(record_old)
-        lno = id.split('--')[1]
+        lno = id.split('-')[1]
         record = []
         for c in columns:
             if c > len_old:
@@ -123,7 +124,7 @@ def header(csv, line_number, encoding=None):
 
     ds = create_dataset(csv, prefix=None, encoding=encoding)
     dataset_id = ds['meta']['id']
-    record = ds['data'].get(f'{dataset_id}--{line_number}')
+    record = ds['data'].get(f'{dataset_id}-{line_number}')
     if record is None:
         print(f'CSV #{line_number}: No such a record', file=sys.stderr)
         return errno.ENOENT
