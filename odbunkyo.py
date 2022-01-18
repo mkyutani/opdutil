@@ -18,6 +18,13 @@ def columnexp2number(c):
 def columnnumber2exp(n):
     return chr(n + 0x41)
 
+def columnvalue2columnstruct(x):
+    m = re.match('^(.+)\(([A-Za-z]+)\)$', x)
+    if m:
+        return { 'n': columnexp2number(m.group(1)), 't': m.group(2).lower() }
+    else:
+        return { 'n': columnexp2number(x), 't': None }
+
 def create_dataset(csv_path, prefix=None, encoding=None):
 
     if csv_path is None:
@@ -82,7 +89,7 @@ def select_columns(ds_old, column_list, strict=False):
     if column_list is None:
         return ds_old
 
-    columns = list(map(columnexp2number, column_list.split(',')))
+    columns = list(map(columnvalue2columnstruct, column_list.split(',')))
 
     ds = {}
     ds['meta'] = ds_old['meta']
@@ -92,13 +99,24 @@ def select_columns(ds_old, column_list, strict=False):
         lno = id.split('-')[1]
         record = []
         for c in columns:
-            if c > len_old:
-                print(f'CSV #{lno}: No such a column {columnnumber2exp(c)}', file=sys.stderr)
+            cn = c['n']
+            ct = c['t']
+            if cn > len_old:
+                print(f'CSV #{lno}: No such a column {columnnumber2exp(cn)}', file=sys.stderr)
                 break
-            elif strict is True and len(record_old[c]) == 0:
-                print(f'CSV #{lno}: No content in column {columnnumber2exp(c)}', file=sys.stderr)
+            elif strict is True and len(record_old[cn]) == 0:
+                print(f'CSV #{lno}: No content in column {columnnumber2exp(cn)}', file=sys.stderr)
                 break
-            record.append(record_old[c])
+            elif ct is not None:
+                try:
+                    if ct == 'int' and int(record_old[cn]):
+                        pass
+                    elif ct == 'float' and float(record_old[cn]):
+                        pass
+                except ValueError:
+                    print(f'CSV #{lno}: Unmatched type of column {columnnumber2exp(cn)}', file=sys.stderr)
+                    break
+            record.append(record_old[cn])
         else:
             ds['data'].update({id: record})
             continue
