@@ -158,10 +158,8 @@ def generate_dataset_name(bs_tag, url):
     parent = bs_tag.parent
     if parent is not None:
         name = parent.get_text(strip=True)
-        if name is not None:
-            name = re.sub('[（(]Excelファイル.*CSVファイル.*[）)]', '', name)
-            if len(name) > 0:
-                return name
+        if name is not None and len(name) > 0:
+            return name
 
     parsed = urlparse(url)
     netloc_hierarchy = parsed.netloc.split('.')
