@@ -11,12 +11,32 @@ import requests
 import sys
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
+from itertools import zip_longest
 
 def columnexp2number(c):
-    return int(ord(c.upper()) - 0x41)
+    if len(c) == 1:
+        n0 = int(ord(c.upper()) - 0x41)
+        if n0 < 0 or n0 >= 26:
+            return None
+        else:
+            return n0
+    elif len(c) == 2:
+        n0 = int(ord(c[0].upper()) - 0x41)
+        n1 = int(ord(c[1].upper()) - 0x41)
+        if n0 < 0 or n0 >= 26 or n1 < 0 or n1 >= 26:
+            return None
+        else:
+            return (n0 + 1) * 26 + n1
+    else:
+        return None
 
 def columnnumber2exp(n):
-    return chr(n + 0x41)
+    if n >= 26:
+        return str(chr(int(n // 26) + 0x40)) + str(chr(int(n % 26) + 0x41))
+    elif n >= 0:
+        return chr(n + 0x41)
+    else:
+        return None
 
 def columnvalue2columnstruct(x):
     m = re.match('^(.+)\(([A-Za-z]+)\)$', x)
@@ -24,6 +44,13 @@ def columnvalue2columnstruct(x):
         return { 'n': columnexp2number(m.group(1)), 't': m.group(2).lower() }
     else:
         return { 'n': columnexp2number(x), 't': None }
+
+def encode_record_id(dataset_id, number):
+    return f'{dataset_id}-{number:08}'
+
+def decode_record_id(record_id):
+    k = record_id.split('-')
+    return k[0], k[1]
 
 def create_dataset(csv_path, prefix=None, encoding=None):
 
@@ -37,8 +64,14 @@ def create_dataset(csv_path, prefix=None, encoding=None):
         prefix = hashlib.md5(csv_path.encode()).hexdigest()
     prefix = re.sub('-', '_', prefix)
 
+    csv_filename = os.path.basename(csv_path)
+    csv_basename = os.path.splitext(csv_filename)[0]
+
     meta = {
-        'id': prefix
+        'id': prefix,
+        'path': csv_path,
+        'filename': csv_filename,
+        'basename': csv_basename
     }
 
     rows = csv.reader(csv_text.splitlines())
@@ -48,7 +81,7 @@ def create_dataset(csv_path, prefix=None, encoding=None):
         record = []
         for column in row:
             record.append(column)
-        data.update({f'{prefix}-{lno}': record})
+        data.update({encode_record_id(prefix, lno): record})
         lno = lno + 1
 
     return {
@@ -84,12 +117,132 @@ def remove_invalid_records(ds):
 
     return ds
 
-def select_columns(ds_old, column_list, strict=False):
+def get_number_list(number_list_exp):
 
-    if column_list is None:
-        return ds_old
+    number_list = []
 
-    columns = list(map(columnvalue2columnstruct, column_list.split(',')))
+    number_word_list = number_list_exp.split(',')
+    for number_word in number_word_list:
+        number = number_word.strip().split('-')
+        try:
+            if len(number) > 2:
+                return None
+            elif len(number) == 2:
+                min = int(number[0])
+                max = int(number[1]) + 1
+                number_list.extend(range(min, max))
+            else:
+                number_list.append(int(number[0]))
+        except:
+            return None
+
+    return list(set(number_list))
+
+def get_record_ids(ds, headers):
+
+    record_ids = []
+    if headers is None:
+        record_ids = sorted(list(ds['data'].keys()))
+    else:
+        header_line_list = get_number_list(headers)
+        if header_line_list is None:
+            return None
+        for header_line_number in header_line_list:
+            record_ids.append(encode_record_id(ds['meta']['id'], header_line_number))
+        record_ids = sorted(record_ids)
+
+    return record_ids
+
+def detect_header_columns(record, hint):
+
+    hints = hint.split(',')
+    detecteds = []
+    for h in hints:
+        if h[0] == '*':
+            c = columnvalue2columnstruct(h[1:])
+            if c['n'] >= len(record):
+                return None
+            else:
+                detecteds.append(c['n'])
+        else:
+            for cno in range(0, len(record)):
+                if re.search(h, record[cno]):
+                    detecteds.append(cno)
+                    break
+            else:
+                return None
+    else:
+        return detecteds
+
+def get_hints(hint):
+
+    hint_headers = None
+    hint_values = None
+    if hint is not None:
+        hint_exp_list = hint.split(':', 1)
+        if len(hint_exp_list) == 1:
+            if len(hint_exp_list[0]) > 0:
+                hint_values = hint_exp_list[0]
+        else:
+            if len(hint_exp_list[0]) > 0:
+                hint_headers = hint_exp_list[0]
+            if len(hint_exp_list[1]) > 0:
+                hint_values = hint_exp_list[1]
+
+    return hint_headers, hint_values
+
+def print_header(ds, record_id, column_numbers):
+
+    record = ds['data'].get(record_id)
+    _, line_number = decode_record_id(record_id)
+
+    output = [ ds['meta']['filename'], str(int(line_number)) ]
+    for cno in column_numbers:
+        output.append(f'{columnnumber2exp(cno)}:{record[cno]}')
+    print(delimiter.join(output))
+
+def detect(csv, encoding=None, hint=None, delimiter=','):
+
+    ds = create_dataset(csv, prefix=None, encoding=encoding)
+    ds = remove_invalid_records(ds)
+
+    hint_headers, hint_values = get_hints(hint)
+
+    record_ids = get_record_ids(ds, hint_headers)
+    if record_ids is None:
+        filename = ds['meta']['filename']
+        print(f'{filename}: Invalid expression in line numbers', file=sys.stderr)
+        return errno.EINVAL
+
+    for record_id in record_ids:
+        record = ds['data'].get(record_id)
+        _, line_number = decode_record_id(record_id)
+
+        if record == None:
+            filename = ds['meta']['filename']
+            print(f'{filename}#{int(line_number)}: No such a record', file=sys.stderr)
+        else:
+            if hint_values is not None:
+                detecteds = detect_header_columns(record, hint_values)
+                if detecteds is not None:
+                    print_header(ds, record_id, detecteds)
+                    break
+            else:
+                print_header(ds, record_id, list(range(0, len(record))))
+    else:
+        if hint_values is not None:
+            filename = ds['meta']['filename']
+            print(f'{filename}: No record like hints', file=sys.stderr)
+            return errno.EINVAL
+
+    return 0
+
+def select_columns(ds_old, column_numbers, column_type_list, strict=False):
+
+    if column_type_list is None:
+        column_types = []
+    else:
+        column_types = column_type_list.split(',')
 
     ds = {}
     ds['meta'] = ds_old['meta']
@@ -98,36 +251,68 @@ def select_columns(ds_old, column_list, strict=False):
         len_old = len(record_old)
         lno = id.split('-')[1]
         record = []
-        for c in columns:
-            cn = c['n']
-            ct = c['t']
-            if cn > len_old:
-                print(f'CSV #{lno}: No such a column {columnnumber2exp(cn)}', file=sys.stderr)
+        for cno, ctype in zip_longest(column_numbers, column_types):
+            if cno is None:
+                continue
+            if ctype == '':
+                ctype = None
+
+            if cno > len_old:
+                filename = ds_old['meta']['filename']
+                print(f'{filename}#{lno}: No such a column {columnnumber2exp(cno)}', file=sys.stderr)
                 break
-            elif strict is True and len(record_old[cn]) == 0:
-                print(f'CSV #{lno}: No content in column {columnnumber2exp(cn)}', file=sys.stderr)
+            elif strict is True and len(record_old[cno]) == 0:
+                filename = ds_old['meta']['filename']
+                print(f'{filename}#{lno}: No content in column {columnnumber2exp(cno)}', file=sys.stderr)
                 break
-            elif ct is not None:
+            elif ctype is not None:
                 try:
-                    if ct == 'int' and int(record_old[cn]):
+                    if ctype == 'int' and int(record_old[cno]):
                         pass
-                    elif ct == 'float' and float(record_old[cn]):
+                    elif ctype == 'float' and float(record_old[cno]):
                         pass
                 except ValueError:
-                    print(f'CSV #{lno}: Unmatched type of column {columnnumber2exp(cn)}', file=sys.stderr)
+                    filename = ds_old['meta']['filename']
+                    print(f'{filename}#{lno}: Unmatched type of column {columnnumber2exp(cno)}', file=sys.stderr)
                     break
-            record.append(record_old[cn])
+            record.append(record_old[cno])
         else:
             ds['data'].update({id: record})
             continue
 
     return ds
 
-def select(csv, prefix=None, column_list=None, encoding=None, output_format=None, strict=False, delimiter=','):
+def select(csv, prefix=None, encoding=None, hint=None, types=None, output_format=None, strict=False, delimiter=','):
 
     ds = create_dataset(csv, prefix=prefix, encoding=encoding)
     ds = remove_invalid_records(ds)
-    ds = select_columns(ds, column_list, strict)
+
+    hint_headers, hint_values = get_hints(hint)
+    detected_columns = None
+    if hint_values is not None:
+        record_ids = get_record_ids(ds, hint_headers)
+        if record_ids is None:
+            filename = ds['meta']['filename']
+            print(f'{filename}: Invalid expression in hints', file=sys.stderr)
+            return errno.EINVAL
+
+        for record_id in record_ids:
+            record = ds['data'].get(record_id)
+            _, line_number = decode_record_id(record_id)
+
+            if record == None:
+                filename = ds['meta']['filename']
+                print(f'{filename}#{int(line_number)}: No such a record', file=sys.stderr)
+            else:
+                detected_columns = detect_header_columns(record, hint_values)
+                if detected_columns is not None:
+                    break
+        else:
+            filename = ds['meta']['filename']
+            print(f'{filename}: No record like hints', file=sys.stderr)
+            return errno.EINVAL
+
+    ds = select_columns(ds, detected_columns, types, strict)
 
     if output_format == 'csv':
         for id, record in ds['data'].items():
@@ -135,22 +320,6 @@ def select(csv, prefix=None, column_list=None, encoding=None, output_format=None
     else:
         dump = json.dumps(ds, ensure_ascii=False, indent=1)
         print(dump)
-
-    return 0
-
-def header(csv, line_number, encoding=None):
-
-    ds = create_dataset(csv, prefix=None, encoding=encoding)
-    dataset_id = ds['meta']['id']
-    record = ds['data'].get(f'{dataset_id}-{line_number}')
-    if record is None:
-        print(f'CSV #{line_number}: No such a record', file=sys.stderr)
-        return errno.ENOENT
-
-    column = 0
-    for c in record:
-        print(f'{csv} {columnnumber2exp(column)} {c}')
-        column = column + 1
 
     return 0
 
@@ -249,13 +418,15 @@ if __name__ == '__main__':
     sp_select.add_argument('-d', '--delimiter', nargs=1, default=',', help='delimiter')
     sp_select.add_argument('--encoding', nargs=1, metavar='ENCODING', help='code page')
     sp_select.add_argument('--prefix', nargs=1, metavar='ENCODING', help='record id prefix')
-    sp_select.add_argument('--columns', nargs=1, metavar='COLUMNS', help='select columns (A,B,...)')
-    sp_select.add_argument('--strict', action='store_true', help='Not allow no content columns')
+    sp_select.add_argument('--hint', nargs=1, metavar='HINTS', help='header record hint')
+    sp_select.add_argument('--type', nargs=1, metavar='TYPES', help='column type')
+    sp_select.add_argument('--strict', action='store_true', help='not allow no content columns')
     sp_select.add_argument('--csv', action='store_true', help='csv output')
-    sp_header = sps.add_parser('header', help='Print header')
-    sp_header.add_argument('path', nargs=1, metavar='CSVPATH', help='open data csv path')
-    sp_header.add_argument('--encoding', nargs=1, metavar='ENCODING', help='code page')
-    sp_header.add_argument('-n', '--line-number', nargs=1, default='1', help='delimiter')
+    sp_detect = sps.add_parser('detect', help='Print header')
+    sp_detect.add_argument('path', nargs=1, metavar='CSVPATH', help='open data csv path')
+    sp_detect.add_argument('-d', '--delimiter', nargs=1, default=',', help='delimiter')
+    sp_detect.add_argument('--encoding', nargs=1, metavar='ENCODING', help='code page')
+    sp_detect.add_argument('--hint', nargs=1, metavar='HINT', help='header record hint')
 
     if len(sys.argv) == 1:
         print(parser.format_usage(), file=sys.stderr)
@@ -270,20 +441,20 @@ if __name__ == '__main__':
         csv_path = None if args.path[0] == '-' else args.path[0]
         encoding = args.encoding[0] if args.encoding is not None else None
         if args.prefix is None:
-            prefix = None
-        elif args.prefix[0] == '-':
             prefix = os.path.splitext(os.path.basename(csv_path))[0]
         else:
             prefix = args.prefix[0]
-        column_list = args.columns[0] if args.columns is not None else None
+        hint = args.hint[0] if args.hint is not None else None
+        types = args.type[0] if args.type is not None else None
         output_format = 'csv' if args.csv is True else None
         strict = args.strict
         delimiter=args.delimiter[0]
-        ret = select(csv_path, column_list=column_list, prefix=prefix, encoding=encoding, output_format=output_format, strict=strict, delimiter=delimiter)
-    elif method == 'header':
+        ret = select(csv_path, prefix=prefix, encoding=encoding, hint=hint, types=types, output_format=output_format, strict=strict, delimiter=delimiter)
+    elif method == 'detect':
         csv_path = None if args.path[0] == '-' else args.path[0]
         encoding = args.encoding[0] if args.encoding is not None else None
-        line_number = args.line_number
-        ret = header(csv_path, line_number[0], encoding=encoding)
+        hint = args.hint[0] if args.hint is not None else None
+        delimiter=args.delimiter[0]
+        ret = detect(csv_path, encoding=encoding, hint=hint, delimiter=delimiter)
 
     exit(ret)
