@@ -2,7 +2,6 @@
 
 import csv
 import errno
-import hashlib
 import io
 import json
 import os
@@ -54,18 +53,15 @@ def decode_record_id(record_id):
 
 def create_dataset(csv_path, prefix=None, encoding=None):
 
-    if csv_path is None:
-        csv_text = sys.stdin.read()
-    else:
-        with open(csv_path, encoding=encoding) as fd:
-            csv_text = fd.read()
-
-    if prefix is None:
-        prefix = hashlib.md5(csv_path.encode()).hexdigest()
-    prefix = re.sub('-', '_', prefix)
+    with open(csv_path, encoding=encoding) as fd:
+        csv_text = fd.read()
 
     csv_filename = os.path.basename(csv_path)
     csv_basename = os.path.splitext(csv_filename)[0]
+
+    if prefix is None:
+        prefix = csv_basename
+        prefix = re.sub('-', '_', prefix)
 
     meta = {
         'id': prefix,
@@ -208,40 +204,60 @@ def get_header_line(ds, record_id, column_numbers):
         line['items'].append(f'{columnnumber2exp(cno)}:{record[cno]}')
     return line
 
-def detect(csv, encoding=None, hint=None, delimiter=','):
+def detect(csv_paths, encoding=None, prefix=None, hint=None):
 
-    ds = create_dataset(csv, prefix=None, encoding=encoding)
-    ds = remove_invalid_records(ds)
-
-    hint_headers, hint_values = get_hints(hint)
-
-    detected = None
-    record_ids = get_record_ids(ds, hint_headers)
-    if record_ids is None:
-        filename = ds['meta']['filename']
-        print(f'{filename}: Invalid expression in line numbers', file=sys.stderr)
-        return None, errno.EINVAL
-
-    for record_id in record_ids:
-        record = ds['data'].get(record_id)
-        _, line_number = decode_record_id(record_id)
-
-        if record == None:
-            filename = ds['meta']['filename']
-            print(f'{filename}#{int(line_number)}: No such a record', file=sys.stderr)
-        else:
-            if hint_values is not None:
-                header_columns = detect_header_columns(record, hint_values)
-                if header_columns is not None:
-                    detected = get_header_line(ds, record_id, header_columns)
-                    break
+    if csv_paths is None:
+        csvs = sys.stdin.readlines()
+        csvs = list(map(lambda x: x.strip(), csvs))
     else:
-        if hint_values is not None:
-            filename = ds['meta']['filename']
-            print(f'{filename}: No records like hints', file=sys.stderr)
-            return None, errno.EINVAL
+        csvs = [ csv_paths ]
 
-    return detected, 0
+    collection = []
+    for csv in csvs:
+
+        ds = create_dataset(csv, prefix=prefix, encoding=encoding)
+        ds = remove_invalid_records(ds)
+
+        collected = {
+            'dataset': ds,
+            'header': None,
+            'selection': None,
+            'status': 0
+        }
+
+        hint_headers, hint_values = get_hints(hint)
+
+        detected = None
+        record_ids = get_record_ids(ds, hint_headers)
+        if record_ids is None:
+            filename = ds['meta']['filename']
+            print(f'{filename}: Invalid expression in line numbers', file=sys.stderr)
+            collected['status'] = errno.EINVAL
+            collection.append(collected)
+        else:
+            for record_id in record_ids:
+                record = ds['data'].get(record_id)
+                _, line_number = decode_record_id(record_id)
+
+                if record == None:
+                    filename = ds['meta']['filename']
+                    print(f'{filename}#{int(line_number)}: No such a record', file=sys.stderr)
+                else:
+                    if hint_values is not None:
+                        header_columns = detect_header_columns(record, hint_values)
+                        if header_columns is not None:
+                            collected['header'] = get_header_line(ds, record_id, header_columns)
+                            collected['status'] = 0
+                            collection.append(collected)
+                            break
+            else:
+                if hint_values is not None:
+                    filename = ds['meta']['filename']
+                    print(f'{filename}: No records like hints', file=sys.stderr)
+                    collected['status'] = errno.EINVAL
+                    collection.append(collected)
+
+    return collection
 
 def select_columns(ds_old, column_numbers, column_type_list, strict=False):
 
@@ -291,20 +307,21 @@ def select_columns(ds_old, column_numbers, column_type_list, strict=False):
 
 def select(csv, prefix=None, encoding=None, hint=None, types=None, strict=False):
 
-    detected, ret = detect(csv, encoding, hint)
-    if ret != 0:
-        return None, ret
-    else:
-        ds = create_dataset(csv, prefix=prefix, encoding=encoding)
-        ds = remove_invalid_records(ds)
-        column_numbers = detected['columns'] if detected is not None else None
-        ds = select_columns(ds, column_numbers, types, strict)
+    collection = detect(csv, encoding, prefix=prefix, hint=hint)
+    for collected in collection:
+        if collected['status'] == 0:
+            ds = collected['dataset']
+            header = collected['header']
+            column_numbers = header['columns'] if header is not None else None
+            ds = select_columns(ds, column_numbers, types, strict)
 
-        selecteds = []
-        for id, record in ds['data'].items():
-            selecteds.append([ds['meta']['id'], id] + record)
+            selecteds = []
+            for id, record in ds['data'].items():
+                selecteds.append([ds['meta']['id'], id] + record)
 
-        return selecteds, 0
+            collected['selection'] = selecteds
+
+    return collection
 
 def generate_dataset_name(bs_tag, url):
     parent = bs_tag.parent
@@ -406,7 +423,7 @@ def main():
     sp_list.add_argument('url', nargs=1, metavar='URL', help='open data portal url')
     sp_list.add_argument('-d', '--delimiter', nargs=1, default=',', help='delimiter')
     sp_select = sps.add_parser('select', help='Select columns from csv file')
-    sp_select.add_argument('path', nargs=1, metavar='CSVPATH', help='open data csv path')
+    sp_select.add_argument('path', nargs='?', metavar='CSVPATH', help='open data csv path')
     sp_select.add_argument('-d', '--delimiter', nargs=1, default=',', help='delimiter')
     sp_select.add_argument('--encoding', nargs=1, metavar='CODEPAGE', help='input encoding')
     sp_select.add_argument('--prefix', nargs=1, metavar='NAME', help='record id prefix')
@@ -415,7 +432,7 @@ def main():
     sp_select.add_argument('--strict', action='store_true', help='not allow no content columns')
     sp_select.add_argument('--csv', action='store_true', help='csv output')
     sp_detect = sps.add_parser('detect', help='Print header')
-    sp_detect.add_argument('path', nargs=1, metavar='CSVPATH', help='open data csv path')
+    sp_detect.add_argument('path', nargs='?', metavar='CSVPATH', help='open data csv path')
     sp_detect.add_argument('-d', '--delimiter', nargs=1, default=',', help='delimiter')
     sp_detect.add_argument('--encoding', nargs=1, metavar='CODEPAGE', help='input encoding')
     sp_detect.add_argument('--hint', nargs=1, metavar='HINTS', help='header record hint as \'RANGE:VALUES\',eg. \'1-5:*A,[Nn]ame\'')
@@ -428,32 +445,37 @@ def main():
     args = parser.parse_args()
     method = args.subparser_name
 
+    ret = 0
+
     if method == 'list':
         ret = list_datasets(args.url[0], delimiter=args.delimiter[0])
     elif method == 'select':
-        csv_path = None if args.path[0] == '-' else args.path[0]
+        csv_path = args.path if args.path is not None else None
         encoding = args.encoding[0] if args.encoding is not None else None
-        if args.prefix is None:
-            prefix = os.path.splitext(os.path.basename(csv_path))[0]
-        else:
-            prefix = args.prefix[0]
+        prefix = args.prefix[0] if args.prefix is not None else None
         hint = args.hint[0] if args.hint is not None else None
         types = args.type[0] if args.type is not None else None
         output_format = 'csv' if args.csv is True else None
         strict = args.strict
         delimiter=args.delimiter[0]
-        selecteds, ret = select(csv_path, prefix=prefix, encoding=encoding, hint=hint, types=types, strict=strict)
-        if selecteds is not None:
-            print_items(selecteds, output_format=output_format, delimiter=delimiter)
+        collection = select(csv_path, prefix=prefix, encoding=encoding, hint=hint, types=types, strict=strict)
+        for collected in collection:
+            if ret == 0:
+                ret = collected['status']
+            if collected['selection'] is not None:
+                print_items(collected['selection'], output_format=output_format, delimiter=delimiter)
     elif method == 'detect':
-        csv_path = None if args.path[0] == '-' else args.path[0]
+        csv_path = args.path if args.path is not None else None
         encoding = args.encoding[0] if args.encoding is not None else None
         hint = args.hint[0] if args.hint is not None else None
         output_format = 'csv' if args.csv is True else None
         delimiter=args.delimiter[0]
-        detected, ret = detect(csv_path, encoding=encoding, hint=hint)
-        if detected is not None:
-            print_items([detected['items']], output_format=output_format, delimiter=delimiter)
+        collection = detect(csv_path, encoding=encoding, hint=hint)
+        for collected in collection:
+            if ret == 0:
+                ret = collected['status']
+            if collected['header'] is not None:
+                print_items([collected['header']['items']], output_format=output_format, delimiter=delimiter)
 
     return ret
 
