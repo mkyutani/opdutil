@@ -206,11 +206,11 @@ def get_header_line(ds, record_id, column_numbers):
 
 def detect(csv_paths, encoding=None, prefix=None, hint=None):
 
-    if csv_paths is None:
+    if csv_paths is None or len(csv_paths) == 0:
         csvs = sys.stdin.readlines()
         csvs = list(map(lambda x: x.strip(), csvs))
     else:
-        csvs = [ csv_paths ]
+        csvs = csv_paths
 
     collection = []
     for csv in csvs:
@@ -255,7 +255,7 @@ def detect(csv_paths, encoding=None, prefix=None, hint=None):
                     filename = ds['meta']['filename']
                     print(f'{filename}: No records like hints', file=sys.stderr)
                     collected['status'] = errno.EINVAL
-                    collection.append(collected)
+                collection.append(collected)
 
     return collection
 
@@ -423,7 +423,7 @@ def main():
     sp_list.add_argument('url', nargs=1, metavar='URL', help='open data portal url')
     sp_list.add_argument('-d', '--delimiter', nargs=1, default=',', help='delimiter')
     sp_select = sps.add_parser('select', help='Select columns from csv file')
-    sp_select.add_argument('path', nargs='?', metavar='CSVPATH', help='open data csv path')
+    sp_select.add_argument('path', nargs='*', metavar='CSVPATH', help='open data csv path')
     sp_select.add_argument('-d', '--delimiter', nargs=1, default=',', help='delimiter')
     sp_select.add_argument('--encoding', nargs=1, metavar='CODEPAGE', help='input encoding')
     sp_select.add_argument('--prefix', nargs=1, metavar='NAME', help='record id prefix')
@@ -432,7 +432,7 @@ def main():
     sp_select.add_argument('--strict', action='store_true', help='not allow no content columns')
     sp_select.add_argument('--csv', action='store_true', help='csv output')
     sp_detect = sps.add_parser('detect', help='Print header')
-    sp_detect.add_argument('path', nargs='?', metavar='CSVPATH', help='open data csv path')
+    sp_detect.add_argument('path', nargs='*', metavar='CSVPATH', help='open data csv path')
     sp_detect.add_argument('-d', '--delimiter', nargs=1, default=',', help='delimiter')
     sp_detect.add_argument('--encoding', nargs=1, metavar='CODEPAGE', help='input encoding')
     sp_detect.add_argument('--hint', nargs=1, metavar='HINTS', help='header record hint as \'RANGE:VALUES\',eg. \'1-5:*A,[Nn]ame\'')
