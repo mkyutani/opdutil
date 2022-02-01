@@ -9,8 +9,9 @@ import re
 import requests
 import sys
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin, urlparse
+from importlib import import_module
 from itertools import zip_longest
+from urllib.parse import urljoin, urlparse
 
 def columnexp2number(c):
     if len(c) == 1:
@@ -394,15 +395,6 @@ def list_datasets(url, delimiter=',', dim_install_command=False):
 
     return 0
 
-def print_items(matrix, output_format=None, delimiter=','):
-
-    if output_format == 'csv':
-        for line in matrix:
-            print(delimiter.join(line))
-    else:
-        dump = json.dumps(matrix, ensure_ascii=False, indent=2)
-        print(dump)
-
 def main():
 
     sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8")
@@ -431,12 +423,14 @@ def main():
     sp_select.add_argument('--type', nargs=1, metavar='TYPES', help='column type')
     sp_select.add_argument('--strict', action='store_true', help='not allow no content columns')
     sp_select.add_argument('--csv', action='store_true', help='csv output')
+    sp_select.add_argument('--post-process', nargs=1, metavar='module', help='call post process module')
     sp_detect = sps.add_parser('detect', help='Print header')
     sp_detect.add_argument('path', nargs='*', metavar='CSVPATH', help='open data csv path')
     sp_detect.add_argument('-d', '--delimiter', nargs=1, default=',', help='delimiter')
     sp_detect.add_argument('--encoding', nargs=1, metavar='CODEPAGE', help='input encoding')
     sp_detect.add_argument('--hint', nargs=1, metavar='HINTS', help='header record hint as \'RANGE:VALUES\',eg. \'1-5:*A,[Nn]ame\'')
     sp_detect.add_argument('--csv', action='store_true', help='csv output')
+    sp_detect.add_argument('--post-process', nargs=1, metavar='module', help='call post process module')
 
     if len(sys.argv) == 1:
         print(parser.format_usage(), file=sys.stderr)
@@ -455,27 +449,19 @@ def main():
         prefix = args.prefix[0] if args.prefix is not None else None
         hint = args.hint[0] if args.hint is not None else None
         types = args.type[0] if args.type is not None else None
-        output_format = 'csv' if args.csv is True else None
         strict = args.strict
-        delimiter=args.delimiter[0]
         collection = select(csv_path, prefix=prefix, encoding=encoding, hint=hint, types=types, strict=strict)
-        for collected in collection:
-            if ret == 0:
-                ret = collected['status']
-            if collected['selection'] is not None:
-                print_items(collected['selection'], output_format=output_format, delimiter=delimiter)
+        post_process_name = args.post_process[0] if args.post_process is not None else 'print'
+        post_process_module = import_module(f'.{post_process_name}', f'{__package__}.modules')
+        ret = post_process_module.selected_post_process(collection, args)
     elif method == 'detect':
         csv_path = args.path if args.path is not None else None
         encoding = args.encoding[0] if args.encoding is not None else None
         hint = args.hint[0] if args.hint is not None else None
-        output_format = 'csv' if args.csv is True else None
-        delimiter=args.delimiter[0]
         collection = detect(csv_path, encoding=encoding, hint=hint)
-        for collected in collection:
-            if ret == 0:
-                ret = collected['status']
-            if collected['header'] is not None:
-                print_items([collected['header']['items']], output_format=output_format, delimiter=delimiter)
+        post_process_name = args.post_process[0] if args.post_process is not None else 'print'
+        post_process_module = import_module(f'.{post_process_name}', f'{__package__}.modules')
+        ret = post_process_module.detected_post_process(collection, args)
 
     return ret
 
