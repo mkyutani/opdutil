@@ -52,7 +52,7 @@ def decode_record_id(record_id):
     k = record_id.split('-')
     return k[0], k[1]
 
-def create_dataset(csv_path, prefix=None, encoding=None):
+def create_dataset(csv_name, csv_path, prefix=None, encoding=None):
 
     with open(csv_path, encoding=encoding) as fd:
         csv_text = fd.read()
@@ -66,6 +66,7 @@ def create_dataset(csv_path, prefix=None, encoding=None):
 
     meta = {
         'id': prefix,
+        'name': csv_name if csv_name is not None else csv_basename,
         'path': csv_path,
         'filename': csv_filename,
         'basename': csv_basename
@@ -208,15 +209,26 @@ def get_header_line(ds, record_id, column_numbers):
 def detect(csv_paths, encoding=None, prefix=None, hint=None):
 
     if csv_paths is None or len(csv_paths) == 0:
-        csvs = sys.stdin.readlines()
-        csvs = list(map(lambda x: x.strip(), csvs))
+        def analyze(line):
+            v = line.split(' ', 1)
+            if len(v) >=2:
+                return { 'name': v[0].strip(), 'path': v[1].strip() }
+            elif len(v) == 1:
+                return { 'name': None, 'path': v[0].strip() }
+            else:
+                return None
+        csv_lines = sys.stdin.readlines()
+        csv_objects = list(map(analyze, csv_lines))
     else:
-        csvs = csv_paths
+        csv_objects = list(map(lambda x: { 'name': None, 'path': x }, csv_paths))
 
     collection = []
-    for csv in csvs:
+    for csv_object in csv_objects:
 
-        ds = create_dataset(csv, prefix=prefix, encoding=encoding)
+        if csv_object['path'] is None:
+            contine
+
+        ds = create_dataset(csv_object['name'], csv_object['path'], prefix=prefix, encoding=encoding)
         ds = remove_invalid_records(ds)
 
         collected = {
@@ -407,23 +419,9 @@ def get_post_process(args):
     else:
         name = 'print'
 
-    module = import_module(f'.{name}', f'{package}.modules')
-
-    if args.post_process_args is not None:
-        ppargs = args.post_process_args[0].split(',')
-        for pparg in ppargs:
-            kv = pparg.split('=', 1)
-            if len(kv) == 2:
-                k = kv[0].strip()
-                v = kv[1].strip()
-                args.__dict__[k] = v
-            elif len(kv) == 1 and len(kv[0]) > 0:
-                k = kv[0].strip()
-                args.__dict__[k] = ''
-            else:
-                pass
-
-    return module, args
+    module = import_module(f'.o_{name}', f'{package}.modules')
+    post_process = module.PostProcess(args)
+    return post_process
 
 def main():
 
@@ -454,7 +452,7 @@ def main():
     sp_select.add_argument('--strict', action='store_true', help='not allow no content columns')
     sp_select.add_argument('--csv', action='store_true', help='csv output')
     sp_select.add_argument('--post-process', nargs=1, metavar='module', help='call post process module')
-    sp_select.add_argument('--post-process-args', nargs=1, metavar='ARGLIST', help='post process module arguments, eg. \'KEY1=VALUE2,KEY1=VALUE2\'')
+    sp_select.add_argument('--post-process-args', nargs='*', metavar='NAME=VALUE', help='post process module arguments')
     sp_detect = sps.add_parser('detect', help='Print header')
     sp_detect.add_argument('path', nargs='*', metavar='CSVPATH', help='open data csv path')
     sp_detect.add_argument('-d', '--delimiter', nargs=1, default=',', help='delimiter')
@@ -462,7 +460,7 @@ def main():
     sp_detect.add_argument('--hint', nargs=1, metavar='HINTS', help='header record hint as \'RANGE:VALUES\',eg. \'1-5:*A,[Nn]ame\'')
     sp_detect.add_argument('--csv', action='store_true', help='csv output')
     sp_detect.add_argument('--post-process', nargs=1, metavar='module', help='call post process module')
-    sp_detect.add_argument('--post-process-args', nargs=1, metavar='ARGLIST', help='post process module arguments, eg. \'KEY1=VALUE2,KEY1=VALUE2\'')
+    sp_detect.add_argument('--post-process-args', nargs='*', metavar='NAME=VALUE', help='post process module arguments')
 
     if len(sys.argv) == 1:
         print(parser.format_usage(), file=sys.stderr)
@@ -483,15 +481,15 @@ def main():
         types = args.type[0] if args.type is not None else None
         strict = args.strict
         collection = select(csv_path, prefix=prefix, encoding=encoding, hint=hint, types=types, strict=strict)
-        post_process_module, post_process_args = get_post_process(args)
-        ret = post_process_module.selected_post_process(collection, post_process_args)
+        post_process = get_post_process(args)
+        ret = post_process.selected(collection)
     elif method == 'detect':
         csv_path = args.path if args.path is not None else None
         encoding = args.encoding[0] if args.encoding is not None else None
         hint = args.hint[0] if args.hint is not None else None
         collection = detect(csv_path, encoding=encoding, hint=hint)
-        post_process_module, post_process_args = get_post_process(args)
-        ret = post_process_module.detected_post_process(collection, post_process_args)
+        post_process = get_post_process(args)
+        ret = post_process_module.detected(collection)
 
     return ret
 
