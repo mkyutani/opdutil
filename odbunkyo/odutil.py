@@ -395,6 +395,33 @@ def list_datasets(url, delimiter=',', dim_install_command=False):
 
     return 0
 
+def get_post_process(args):
+
+    if __package__ is None:
+        package = ''
+    else:
+        package = f'{__package__}'
+
+    if args.post_process is not None:
+        name = args.post_process[0]
+    else:
+        name = 'print'
+
+    module = import_module(f'.{name}', f'{package}.modules')
+
+    if args.post_process_args is not None:
+        ppargs = args.post_process_args[0].split(',')
+        for pparg in ppargs:
+            kv = pparg.split('=', 1)
+            if len(kv) == 2:
+                args.__dict__[kv[0]] = kv[1]
+            elif len(kv) == 1 and len(kv[0]) > 0:
+                args.__dict__[kv[0]] = ''
+            else:
+                pass
+
+    return module, args
+
 def main():
 
     sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8")
@@ -424,6 +451,7 @@ def main():
     sp_select.add_argument('--strict', action='store_true', help='not allow no content columns')
     sp_select.add_argument('--csv', action='store_true', help='csv output')
     sp_select.add_argument('--post-process', nargs=1, metavar='module', help='call post process module')
+    sp_select.add_argument('--post-process-args', nargs=1, metavar='ARGLIST', help='post process module arguments, eg. \'KEY1=VALUE2,KEY1=VALUE2\'')
     sp_detect = sps.add_parser('detect', help='Print header')
     sp_detect.add_argument('path', nargs='*', metavar='CSVPATH', help='open data csv path')
     sp_detect.add_argument('-d', '--delimiter', nargs=1, default=',', help='delimiter')
@@ -431,6 +459,7 @@ def main():
     sp_detect.add_argument('--hint', nargs=1, metavar='HINTS', help='header record hint as \'RANGE:VALUES\',eg. \'1-5:*A,[Nn]ame\'')
     sp_detect.add_argument('--csv', action='store_true', help='csv output')
     sp_detect.add_argument('--post-process', nargs=1, metavar='module', help='call post process module')
+    sp_detect.add_argument('--post-process-args', nargs=1, metavar='ARGLIST', help='post process module arguments, eg. \'KEY1=VALUE2,KEY1=VALUE2\'')
 
     if len(sys.argv) == 1:
         print(parser.format_usage(), file=sys.stderr)
@@ -451,17 +480,15 @@ def main():
         types = args.type[0] if args.type is not None else None
         strict = args.strict
         collection = select(csv_path, prefix=prefix, encoding=encoding, hint=hint, types=types, strict=strict)
-        post_process_name = args.post_process[0] if args.post_process is not None else 'print'
-        post_process_module = import_module(f'.{post_process_name}', f'{__package__}.modules')
-        ret = post_process_module.selected_post_process(collection, args)
+        post_process_module, post_process_args = get_post_process(args)
+        ret = post_process_module.selected_post_process(collection, post_process_args)
     elif method == 'detect':
         csv_path = args.path if args.path is not None else None
         encoding = args.encoding[0] if args.encoding is not None else None
         hint = args.hint[0] if args.hint is not None else None
         collection = detect(csv_path, encoding=encoding, hint=hint)
-        post_process_name = args.post_process[0] if args.post_process is not None else 'print'
-        post_process_module = import_module(f'.{post_process_name}', f'{__package__}.modules')
-        ret = post_process_module.detected_post_process(collection, args)
+        post_process_module, post_process_args = get_post_process(args)
+        ret = post_process_module.detected_post_process(collection, post_process_args)
 
     return ret
 
