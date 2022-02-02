@@ -414,9 +414,12 @@ def get_post_process(args):
         for pparg in ppargs:
             kv = pparg.split('=', 1)
             if len(kv) == 2:
-                args.__dict__[kv[0]] = kv[1]
+                k = kv[0].strip()
+                v = kv[1].strip()
+                args.__dict__[k] = v
             elif len(kv) == 1 and len(kv[0]) > 0:
-                args.__dict__[kv[0]] = ''
+                k = kv[0].strip()
+                args.__dict__[k] = ''
             else:
                 pass
 
