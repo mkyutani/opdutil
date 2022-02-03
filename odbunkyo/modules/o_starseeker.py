@@ -147,7 +147,7 @@ class PostProcess(BasePostProcess):
                         elif id_type == 'float':
                             value = 0.0
                         elif id_type == 'datetime':
-                            value = datetime.now().strftime('%Y/%m/%d %H:%M:%S')
+                            value = datetime.datetime.now().strftime('%Y/%m/%d %H:%M:%S')
                         else :
                             value = ''
                     fd.write(f'{ds_id},{ds_entity_type_id},{id},{id_type},{value}\n')
