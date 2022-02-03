@@ -2,6 +2,7 @@
 .json
 
 # Local files
+site/
 env/
 log/
 tmp/

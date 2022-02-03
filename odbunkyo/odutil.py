@@ -272,12 +272,12 @@ def detect(csv_paths, encoding=None, prefix=None, hint=None):
 
     return collection
 
-def select_columns(ds_old, column_numbers, column_type_list, strict=False):
+def select_columns(ds_old, column_numbers, column_filter_list, strict=False):
 
-    if column_type_list is None:
-        column_types = []
+    if column_filter_list is None:
+        column_filter = []
     else:
-        column_types = column_type_list.split(',')
+        column_filter = column_filter_list.split(',')
 
     ds = {}
     ds['meta'] = ds_old['meta']
@@ -287,7 +287,7 @@ def select_columns(ds_old, column_numbers, column_type_list, strict=False):
         lno = id.split('-')[1]
         record = []
         record_column_numbers = column_numbers if column_numbers is not None else range(0, len_old)
-        for cno, ctype in zip_longest(record_column_numbers, column_types):
+        for cno, ctype in zip_longest(record_column_numbers, column_filter):
             if cno is None:
                 continue
             if ctype == '':
@@ -318,7 +318,7 @@ def select_columns(ds_old, column_numbers, column_type_list, strict=False):
 
     return ds
 
-def select(csv, prefix=None, encoding=None, hint=None, types=None, strict=False):
+def select(csv, prefix=None, encoding=None, hint=None, filter=None, strict=False):
 
     collection = detect(csv, encoding, prefix=prefix, hint=hint)
     for collected in collection:
@@ -326,7 +326,7 @@ def select(csv, prefix=None, encoding=None, hint=None, types=None, strict=False)
             ds = collected['dataset']
             header = collected['header']
             column_numbers = header['columns'] if header is not None else None
-            ds = select_columns(ds, column_numbers, types, strict)
+            ds = select_columns(ds, column_numbers, filter, strict)
 
             selecteds = []
             for id, record in ds['data'].items():
@@ -448,7 +448,7 @@ def main():
     sp_select.add_argument('--encoding', nargs=1, metavar='CODEPAGE', help='input encoding')
     sp_select.add_argument('--prefix', nargs=1, metavar='NAME', help='record id prefix')
     sp_select.add_argument('--hint', nargs=1, metavar='HINTS', help='header record hint as \'RANGE:VALUES\', eg. \'1-5:*A,[Nn]ame\'')
-    sp_select.add_argument('--type', nargs=1, metavar='TYPES', help='column type')
+    sp_select.add_argument('--filter', nargs=1, metavar='FILTER', help='column filter (\'int\' or \'float\')')
     sp_select.add_argument('--strict', action='store_true', help='not allow no content columns')
     sp_select.add_argument('--csv', action='store_true', help='csv output')
     sp_select.add_argument('--post-process', nargs=1, metavar='module', help='call post process module')
@@ -478,9 +478,9 @@ def main():
         encoding = args.encoding[0] if args.encoding is not None else None
         prefix = args.prefix[0] if args.prefix is not None else None
         hint = args.hint[0] if args.hint is not None else None
-        types = args.type[0] if args.type is not None else None
+        filter = args.filter[0] if args.filter is not None else None
         strict = args.strict
-        collection = select(csv_path, prefix=prefix, encoding=encoding, hint=hint, types=types, strict=strict)
+        collection = select(csv_path, prefix=prefix, encoding=encoding, hint=hint, filter=filter, strict=strict)
         post_process = get_post_process(args)
         ret = post_process.selected(collection)
     elif method == 'detect':

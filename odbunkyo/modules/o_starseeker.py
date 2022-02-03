@@ -2,7 +2,7 @@
 
 import re
 import sys
-from modules.base import BasePostProcess
+from odbunkyo.modules.base import BasePostProcess
 
 class PostProcess(BasePostProcess):
 
