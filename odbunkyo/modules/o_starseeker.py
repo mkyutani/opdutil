@@ -134,7 +134,7 @@ class PostProcess(BasePostProcess):
                     if id_type == 'geo:point':
                         if vector_index + 1 < vector_max: 
                             value = f'"{vector[vector_index]}, {vector[vector_index+1]}"'
-                            vector_index + vector_index + 2
+                            vector_index = vector_index + 2
                         else:
                             value = f'"0, 0"'
                     else:
