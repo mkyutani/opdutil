@@ -81,7 +81,7 @@ class PostProcess(BasePostProcess):
         category_id = self.seq()
 
         try:
-            fd.write(f'{category_id},{self.name},{self.color},{self.order},○\n')
+            fd.write(f'{category_id},{self.name},{self.color},{self.order},TRUE\n')
         except Exception as e:
             print(e, file=sys.stderr)
 
@@ -105,7 +105,7 @@ class PostProcess(BasePostProcess):
         ds_color = color_palette[self.seq_offset() % len(color_palette)]
 
         try:
-            fd.write(f'{ds_id},{category_id},{self.name},{ds_name},{ds_color},{ds_entity_type_id},○')
+            fd.write(f'{ds_id},{category_id},{self.name},{ds_name},{ds_color},{ds_entity_type_id},TRUE')
             fd.write(',location')
             fd.write(',time')
             for attribute in self.attributes:
