@@ -8,10 +8,10 @@ class PostProcess(BasePostProcess):
 
     def __init__(self, args):
         super().__init__(args)
-        self.base = args.base if args.base is not None else 100000
+        self.base = int(args.base) if args.base is not None else 100000
         self.name = args.name if args.name is not None else 'opendata'
         self.color = args.color if args.color is not None else 'gold'
-        self.order = args.order if args.order is not None else 10
+        self.order = int(args.order) if args.order is not None else 10
         self.attributes = self.create_attribute_objects(args.attributes) if args.attributes is not None else None
         self.category_file = args.category_file if args.category_file is not None else 'category.csv'
         self.dataset_file = args.dataset_file if args.dataset_file is not None else 'dataset.csv'
