@@ -18,12 +18,20 @@ class BasePostProcess():
                 if len(kv) == 2:
                     k = kv[0].strip()
                     v = kv[1].strip()
-                    args.__dict__[k] = v
                 elif len(kv) == 1 and len(kv[0]) > 0:
                     k = kv[0].strip()
-                    args.__dict__[k] = ''
+                    v = ''
                 else:
-                    pass
+                    continue
+
+                if k in args.__dict__:
+                    if args.__dict__[k] is None:
+                        args.__dict__[k] = v
+                    else:
+                        v0 = args.__dict__[k]
+                        args.__dict__[k] = [v0, v]
+                else:
+                    print(f'Invalid post process argument: {k}')
 
         return args
 
