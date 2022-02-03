@@ -9,15 +9,15 @@ class PostProcess(BasePostProcess):
 
     def __init__(self, args):
         super().__init__(args)
-        self.base = int(args.base) if args.base is not None else 100000
-        self.name = args.name if args.name is not None else 'opendata'
-        self.color = args.color if args.color is not None else 'gold'
-        self.order = int(args.order) if args.order is not None else 10
+        self.seq_base = int(args.base) if args.base is not None else 100000
+        self.category_name = args.name if args.name is not None else 'opendata'
+        self.category_color = args.color if args.color is not None else 'gold'
+        self.category_order = int(args.order) if args.order is not None else 10
         self.attributes = self.create_attribute_objects(args.attributes) if args.attributes is not None else None
         self.category_file = args.category_file if args.category_file is not None else 'category.csv'
         self.dataset_file = args.dataset_file if args.dataset_file is not None else 'dataset.csv'
         self.data_file = args.data_file if args.data_file is not None else 'data.csv'
-        self.seq_no = self.base
+        self.seq_no = self.seq_base
 
     def list_argument_names(self):
 
@@ -33,7 +33,7 @@ class PostProcess(BasePostProcess):
         return seq_no
 
     def seq_offset(self):
-        return self.seq_no - self.base
+        return self.seq_no - self.seq_base
 
     def create_attribute_objects(self, attributes):
 
@@ -82,7 +82,7 @@ class PostProcess(BasePostProcess):
         category_id = self.seq()
 
         try:
-            fd.write(f'{category_id},{self.name},{self.color},{self.order},TRUE\n')
+            fd.write(f'{category_id},{self.category_name},{self.category_color},{self.category_order},TRUE\n')
         except Exception as e:
             print(e, file=sys.stderr)
 
@@ -106,7 +106,7 @@ class PostProcess(BasePostProcess):
         ds_color = color_palette[self.seq_offset() % len(color_palette)]
 
         try:
-            fd.write(f'{ds_id},{category_id},{self.name},{ds_name},{ds_color},{ds_entity_type_id},TRUE')
+            fd.write(f'{ds_id},{category_id},{self.category_name},{ds_name},{ds_color},{ds_entity_type_id},TRUE')
             fd.write(',location')
             fd.write(',time')
             for attribute in self.attributes:
