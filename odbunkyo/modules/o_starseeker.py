@@ -111,6 +111,7 @@ class PostProcess(BasePostProcess):
             fd.write(',time')
             for attribute in self.attributes:
                 if attribute['builtin'] is False:
+                    self.seq()
                     id = attribute['id']
                     name = attribute['name']
                     order = attribute['order']
