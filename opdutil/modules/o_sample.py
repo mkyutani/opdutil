@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import pprint
-from odbunkyo.modules.base import BasePostProcess
+from opdutil.modules.base import BasePostProcess
 
 class PostProcess(BasePostProcess):
 

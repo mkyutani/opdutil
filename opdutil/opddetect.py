@@ -6,12 +6,10 @@ import io
 import json
 import os
 import re
-import requests
 import sys
 from bs4 import BeautifulSoup
 from importlib import import_module
 from itertools import zip_longest
-from urllib.parse import urljoin, urlparse
 
 def columnexp2number(c):
     if len(c) == 1:
@@ -272,141 +270,6 @@ def detect(csv_paths, encoding=None, prefix=None, hint=None):
 
     return collection
 
-def select_columns(ds_old, column_numbers, column_filter_list, strict=False):
-
-    if column_filter_list is None:
-        column_filter = []
-    else:
-        column_filter = column_filter_list.split(',')
-
-    ds = {}
-    ds['meta'] = ds_old['meta']
-    ds['data'] = {}
-    for id, record_old in ds_old['data'].items():
-        len_old = len(record_old)
-        lno = id.split('-')[1]
-        record = []
-        record_column_numbers = column_numbers if column_numbers is not None else range(0, len_old)
-        for cno, ctype in zip_longest(record_column_numbers, column_filter):
-            if cno is None:
-                continue
-            if ctype == '':
-                ctype = None
-
-            if cno > len_old:
-                filename = ds_old['meta']['filename']
-                print(f'{filename}#{lno}: No such a column {columnnumber2exp(cno)}', file=sys.stderr)
-                break
-            elif strict is True and len(record_old[cno]) == 0:
-                filename = ds_old['meta']['filename']
-                print(f'{filename}#{lno}: No content in column {columnnumber2exp(cno)}', file=sys.stderr)
-                break
-            elif ctype is not None:
-                try:
-                    if ctype == 'int' and int(record_old[cno]):
-                        pass
-                    elif ctype == 'float' and float(record_old[cno]):
-                        pass
-                except ValueError:
-                    filename = ds_old['meta']['filename']
-                    print(f'{filename}#{lno}: Unmatched type of column {columnnumber2exp(cno)}', file=sys.stderr)
-                    break
-            record.append(record_old[cno])
-        else:
-            ds['data'].update({id: record})
-            continue
-
-    return ds
-
-def select(csv, prefix=None, encoding=None, hint=None, filter=None, strict=False):
-
-    collection = detect(csv, encoding, prefix=prefix, hint=hint)
-    for collected in collection:
-        if collected['status'] == 0:
-            ds = collected['dataset']
-            header = collected['header']
-            column_numbers = header['columns'] if header is not None else None
-            ds = select_columns(ds, column_numbers, filter, strict)
-
-            selecteds = []
-            for id, record in ds['data'].items():
-                selecteds.append([ds['meta']['id'], id] + record)
-
-            collected['selection'] = selecteds
-
-    return collection
-
-def generate_dataset_name(bs_tag, url):
-    parent = bs_tag.parent
-    if parent is not None:
-        name = parent.get_text(strip=True)
-        if name is not None and len(name) > 0:
-            return name
-
-    parsed = urlparse(url)
-    netloc_hierarchy = parsed.netloc.split('.')
-    netloc_hierarchy.reverse()
-    path_hierarchy = parsed.path.split('/')
-    path_hierarchy.pop(0)
-    path_hierarchy[-1] = re.sub('.csv$', '', path_hierarchy[-1])
-    name = '.'.join(netloc_hierarchy) + '.' + '.'.join(path_hierarchy)
-    return name
-
-def create_dataset_profile_list(url):
-
-    res = None
-    try:
-        res = requests.get(url)
-    except requests.exceptions.RequestException as e:
-        print(f'Failed to fetch {url}', file=sys.stderr)
-        return None
-    except Exception as e:
-        print(f'Failed to fetch {url}', file=sys.stderr)
-        return None
-
-    if res.status_code >= 400:
-        print(f'Failed to fetch {url}. Status code={res.status_code}', file=sys.stderr)
-        return None
-
-    url_object = urlparse(url)
-    url_netloc = url_object.netloc.lower()
-
-    dataset_profile_list = []
-
-    bs = BeautifulSoup(res.content, 'html.parser')
-    for t in bs.find_all('a'):
-        ref = t.get('href')
-        if ref is not None:
-            ref = ''.join(filter(lambda c: c >= ' ', ref))
-            ref = re.sub('<.*?>', '', ref)
-            ref = ref.strip()
-
-            ref_full = urljoin(url, ref)
-            ref_object = urlparse(ref_full)
-
-            scheme = ref_object.scheme.lower()
-            netloc = ref_object.netloc.lower()
-            path = ref_object.path.lower()
-            if scheme == 'http' or scheme == 'https':
-                if netloc == url_netloc and path.endswith('.csv'):
-                    dataset_url = ref_full
-                    dataset_name = generate_dataset_name(t, ref_full)
-                    dataset_profile_list.append({
-                        'name': dataset_name,
-                        'url': dataset_url
-                    })
-
-    return dataset_profile_list
-
-def list_datasets(url, delimiter=',', dim_install_command=False):
-
-    dataset_profile_list = create_dataset_profile_list(url)
-    for dsp in dataset_profile_list:
-        line = delimiter.join([dsp['url'], dsp['name']])
-        print(line)
-
-    return 0
-
 def get_post_process(args):
 
     if __package__ is None:
@@ -438,60 +301,27 @@ def main():
             super(SortingHelpFormatter, self).add_arguments(actions)
 
     parser = argparse.ArgumentParser(description='Open dataset utilty', formatter_class=SortingHelpFormatter)
-    sps = parser.add_subparsers(dest='subparser_name', title='action arguments')
-    sp_list = sps.add_parser('list', help='List links')
-    sp_list.add_argument('url', nargs=1, metavar='URL', help='open data portal url')
-    sp_list.add_argument('-d', '--delimiter', nargs=1, default=',', help='delimiter')
-    sp_select = sps.add_parser('select', help='Select columns from csv file')
-    sp_select.add_argument('path', nargs='*', metavar='CSVPATH', help='open data csv path')
-    sp_select.add_argument('-d', '--delimiter', nargs=1, default=',', help='delimiter')
-    sp_select.add_argument('--encoding', nargs=1, metavar='CODEPAGE', help='input encoding')
-    sp_select.add_argument('--prefix', nargs=1, metavar='NAME', help='record id prefix')
-    sp_select.add_argument('--hint', nargs=1, metavar='HINTS', help='header record hint as \'RANGE:VALUES\', eg. \'1-5:*A,[Nn]ame\'')
-    sp_select.add_argument('--filter', nargs=1, metavar='FILTER', help='column filter (\'int\' or \'float\')')
-    sp_select.add_argument('--strict', action='store_true', help='not allow no content columns')
-    sp_select.add_argument('--csv', action='store_true', help='csv output')
-    sp_select.add_argument('--post-process', nargs=1, metavar='module', help='call post process module')
-    sp_select.add_argument('--post-process-args', nargs='*', metavar='NAME=VALUE', help='post process module arguments')
-    sp_detect = sps.add_parser('detect', help='Print header')
-    sp_detect.add_argument('path', nargs='*', metavar='CSVPATH', help='open data csv path')
-    sp_detect.add_argument('-d', '--delimiter', nargs=1, default=',', help='delimiter')
-    sp_detect.add_argument('--encoding', nargs=1, metavar='CODEPAGE', help='input encoding')
-    sp_detect.add_argument('--hint', nargs=1, metavar='HINTS', help='header record hint as \'RANGE:VALUES\',eg. \'1-5:*A,[Nn]ame\'')
-    sp_detect.add_argument('--csv', action='store_true', help='csv output')
-    sp_detect.add_argument('--post-process', nargs=1, metavar='module', help='call post process module')
-    sp_detect.add_argument('--post-process-args', nargs='*', metavar='NAME=VALUE', help='post process module arguments')
+    parser.add_argument('path', nargs='*', metavar='CSVPATH', help='open data csv path')
+    parser.add_argument('-d', '--delimiter', nargs=1, default=',', help='delimiter')
+    parser.add_argument('--encoding', nargs=1, metavar='CODEPAGE', help='input encoding')
+    parser.add_argument('--hint', nargs=1, metavar='HINTS', help='header record hint as \'RANGE:VALUES\',eg. \'1-5:*A,[Nn]ame\'')
+    parser.add_argument('--csv', action='store_true', help='csv output')
+    parser.add_argument('--post-process', nargs=1, metavar='module', help='call post process module')
+    parser.add_argument('--post-process-args', nargs='*', metavar='NAME=VALUE', help='post process module arguments')
 
     if len(sys.argv) == 1:
         print(parser.format_usage(), file=sys.stderr)
         exit(1)
 
     args = parser.parse_args()
-    method = args.subparser_name
 
-    ret = 0
-
-    if method == 'list':
-        ret = list_datasets(args.url[0], delimiter=args.delimiter[0])
-    elif method == 'select':
-        csv_path = args.path if args.path is not None else None
-        encoding = args.encoding[0] if args.encoding is not None else None
-        prefix = args.prefix[0] if args.prefix is not None else None
-        hint = args.hint[0] if args.hint is not None else None
-        filter = args.filter[0] if args.filter is not None else None
-        strict = args.strict
-        collection = select(csv_path, prefix=prefix, encoding=encoding, hint=hint, filter=filter, strict=strict)
-        post_process = get_post_process(args)
-        ret = post_process.selected(collection)
-    elif method == 'detect':
-        csv_path = args.path if args.path is not None else None
-        encoding = args.encoding[0] if args.encoding is not None else None
-        hint = args.hint[0] if args.hint is not None else None
-        collection = detect(csv_path, encoding=encoding, hint=hint)
-        post_process = get_post_process(args)
-        ret = post_process_module.detected(collection)
-
-    return ret
+    csv_path = args.path if args.path is not None else None
+    encoding = args.encoding[0] if args.encoding is not None else None
+    hint = args.hint[0] if args.hint is not None else None
+    
+    collection = detect(csv_path, encoding=encoding, hint=hint)
+    post_process = get_post_process(args)
+    return post_process.detected(collection)
 
 if __name__ == '__main__':
     exit(main())

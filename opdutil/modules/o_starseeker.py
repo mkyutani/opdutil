@@ -3,7 +3,7 @@
 import datetime
 import re
 import sys
-from odbunkyo.modules.base import BasePostProcess
+from opdutil.modules.base import BasePostProcess
 
 class PostProcess(BasePostProcess):
 
