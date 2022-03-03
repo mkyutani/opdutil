@@ -8,17 +8,19 @@ from setuptools import setup
 from setuptools import find_packages
 
 setup(
-    name='open-data-bunkyo',
+    name='opdutil',
     version='0.1.0',
     license='MIT LICENSE',
-    description='Open Data CSV utilities',
+    description='open data utilities',
     author='mkyutani@gmail.com',
-    url='http://github.com/mkyutani/open-data-bunkyo',
+    url='http://github.com/mkyutani/opdutil',
     packages=find_packages(),
     install_requires=open('requirements.txt').read().splitlines(),
     entry_points={
         'console_scripts': [
-            'odutil=odbunkyo.odutil:main',
+            'opdselect=opdutil.opdselect:main',
+            'opddetect=opdutil.opddetect:main',
+            'opdlist=opdutil.opdlist:main'
         ]
     },
     zip_safe=False
